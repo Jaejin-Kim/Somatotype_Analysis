@@ -1,0 +1,192 @@
+---
+title: "KIM_JAEJIN_2122_Proj2_pt2"
+author: "Jaejin Kim"
+date: "3/26/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+require(ggplot2)
+require(scales)
+require(reshape2)
+require(olsrr)
+```
+
+# Data Import and Subset
+```{r}
+data <- read.csv("BGS.csv")
+boys <- data[data$Sex == 0,]
+girls <- data[data$Sex == 1,]
+```
+
+# Descriptives
+```{r}
+#continuous variables
+psych::describe(data[,3:12]) #all of the children
+psych::describe(boys[,3:12]) #boys
+psych::describe(girls[,3:12]) #girls
+
+#categorical variables
+##sex
+desc.sex <- round(rbind(table(data$Sex),
+                        table(data$Sex)/nrow(data)),
+                  digits=3)
+rownames(desc.sex) <- c("n", "Proportion")
+desc.sex
+
+##somatotype
+###all
+desc.soma <- round(rbind(table(data$Soma),
+                         table(data$Soma)/nrow(data)),
+                   digits = 3)
+rownames(desc.soma) <- c("n", "Proportion")
+desc.soma
+
+###boys
+desc.soma.b <- round(rbind(table(boys$Soma),
+                           table(boys$Soma)/nrow(boys)),
+                     digits = 3)
+rownames(desc.soma.b) <- c("n", "Proportion")
+desc.soma.b
+###girls
+desc.soma.g <- round(rbind(table(girls$Soma),
+                           table(girls$Soma)/nrow(girls)),
+                     digits = 3)
+rownames(desc.soma.g) <- c("n", "Proportion")
+desc.soma.g
+```
+
+```{r}
+#Set main title position
+theme_update(plot.title = element_text(hjust=0.5))
+
+#Correlation heatmap of the covariatees
+cormat <- round(cor(data[,-c(1,2,13)]),2)
+melted.cormat <- melt(cormat)
+melted.cormat
+
+heatmap <- ggplot(melted.cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile(color="white") + 
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                       midpoint = 0, limit = c(-1,1), space = "Lab",
+                       name = "Pearson\nCorrelation") +
+  geom_text(aes(Var2, Var1, label = value), color = "black", size = 4) +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  labs(title = "Corrleation Heatmap")
+
+heatmap
+#ggsave("heatmap.jpeg")
+```
+
+```{r}
+#Histogram of the somatotype variable
+##of all
+histsoma <- ggplot(data, aes(Soma)) + 
+  labs(title = "Somatotype of Participants", y = "count") +
+  geom_bar(aes(y=(..count..)), fill="orange") +
+  geom_text(aes(y=(..count..), label = ifelse((..count..)==0, "", 
+  percent((..count..)/sum(..count..)))), stat="count")
+
+histsoma
+#ggsave("histsoma.jpeg")
+
+##by Sex
+histsoma_sex<- ggplot(data, aes(Soma, fill = as.factor(Sex))) + 
+  geom_histogram(binwidth=.5, position="dodge") +
+  labs(title = "Somatotype by Sex") +
+  scale_fill_discrete(name="Sex", labels=c("male", "female"))
+
+histsoma_sex
+#ggsave("histsoma_sex.jpeg")
+```
+
+```{r}
+#Scatterplots between height and weight variables at different time points
+scat2 <- ggplot(data, aes(WT2, HT2, color = as.factor(Sex))) +
+  geom_point() +
+  scale_color_discrete(name = "Sex", labels = c("male", "female"))
+
+scat9 <- ggplot(data, aes(WT9, HT9, color = as.factor(Sex))) +
+  geom_point() +
+  scale_color_discrete(name = "Sex", labels = c("male", "female"))
+
+scat18 <- ggplot(data, aes(WT18, HT18, color = as.factor(Sex))) +
+  geom_point() +
+  scale_color_discrete(name = "Sex", labels = c("male", "female"))
+
+scat2
+scat9
+scat18
+#ggsave("scat2.jpeg")
+#ggsave("scat9.jpeg")
+#ggsave("scat18.jpeg")
+```
+
+
+```{r}
+#Boxplots of the continuous variables against sex
+weight.melted <- melt(data, id.vars = c("X", "Sex", "Soma"),
+                      measure.vars = c("WT2", "WT9", "WT18"))
+height.melted <- melt(data, id.vars = c("X", "Sex", "Soma"),
+                      measure.vars = c("HT2", "HT9", "HT18"))
+
+boxwt <- ggplot(weight.melted, aes(x=variable, y=value, fill=as.factor(Sex))) +
+  geom_boxplot() +
+  facet_wrap(~Sex) +
+  scale_fill_discrete(name = "Sex", labels = c("male", "female")) +
+  labs(x = "Weight Covariates", y = "Weight",
+       title = "Boxplot of Weight Against Sex")
+
+boxwt
+#ggsave("boxwt.jpeg")
+
+boxht <- ggplot(height.melted, aes(x=variable, y=value, fill=as.factor(Sex))) +
+  geom_boxplot() +
+  facet_wrap(~Sex) +
+  scale_fill_discrete(name = "Sex", labels = c("male", "female")) +
+  labs(x = "Height Covariates", y = "Height",
+       title = "Boxplot of Height Against Sex")
+
+boxht
+#ggsave("boxht.jpeg")
+```
+
+
+# Preliminary Multiple Regression Model
+```{r}
+##Build base model
+lm.base <- lm(Soma ~ HT2 + HT9 + HT18*as.factor(Sex) + WT2 + WT9 + WT18*as.factor(Sex), data)
+summary(lm.base)
+```
+
+```{r}
+##Stepwise selection using AIC
+step(lm.base, direction = "backward")
+model.AIC <- lm(formula = Soma ~ HT2 + HT18 + as.factor(Sex)
+                + WT2 + WT9 + WT18, data = data)
+
+##Stepwise selection using BIC
+step(lm.base2, direction = "backward", k=log(2))
+model.BIC <- lm(formula = Soma ~ HT2 + HT18 + as.factor(Sex)
+                + WT2 + WT9 + WT18 + HT18:as.factor(Sex)
+                + as.factor(Sex):WT18, data = data2)
+
+##Comparison
+summary(model.AIC)
+summary(model.BIC)
+```
+
+```{r}
+##Residual diagnostics
+final.resid.fit <- ols_plot_resid_fit(model.BIC)
+final.resid.fit
+
+final.resid.qq <- ols_plot_resid_qq(model.BIC)
+final.resid.qq
+```
+
